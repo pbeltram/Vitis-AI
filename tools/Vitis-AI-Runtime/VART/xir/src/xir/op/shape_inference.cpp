@@ -497,8 +497,16 @@ void shape_infer_relu(xir::Op* cur) { shape_infer_remain(cur); }
 void shape_infer_leaky_relu(xir::Op* cur) { shape_infer_remain(cur); }
 void shape_infer_prelu(xir::Op* cur) { shape_infer_remain(cur); }
 void shape_infer_relu6(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_elu(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_celu(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_selu(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_gelu(xir::Op* cur) { shape_infer_remain(cur); }
 void shape_infer_sigmoid(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_swish(xir::Op* cur) { shape_infer_remain(cur); }
 void shape_infer_tanh(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_hard_sigmoid(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_hard_swish(xir::Op* cur) { shape_infer_remain(cur); }
+void shape_infer_hard_tanh(xir::Op* cur) { shape_infer_remain(cur); }
 
 void shape_infer_reorg(xir::Op* cur) {
   auto in = cur->get_input_tensor("input");
@@ -605,9 +613,9 @@ void shape_infer_reshape(xir::Op* cur) {
   int r_size = 1;
   for (auto s : reshape) r_size *= s;
   UNI_LOG_CHECK(in->get_element_num() == r_size, XIR_UNEXPECTED_VALUE)
-      << "The input elements number is " << in->get_element_num()
-      << ", but the output elements number is " << r_size
-      << ". And the input shape is " << to_string(in->get_shape())
+      << cur->to_string() << "'s input elements number is "
+      << in->get_element_num() << ", but the output elements number is "
+      << r_size << ". Input shape is " << to_string(in->get_shape())
       << ", and the output shape is " << to_string(reshape) << ".";
   auto out = cur->get_output_tensor();
   auto output_tensor =
@@ -745,9 +753,7 @@ void shape_infer_reduction_max(xir::Op* cur) {
   forward_reduction_max(cur);
 }
 
-void shape_infer_l2_normalize(xir::Op* cur) {
-  shape_infer_remain(cur);
-}
+void shape_infer_l2_normalize(xir::Op* cur) { shape_infer_remain(cur); }
 
 void shape_infer_exp(xir::Op* cur) { shape_infer_remain(cur); }
 
@@ -985,13 +991,9 @@ void shape_infer_div(xir::Op* cur) {
   }
 }
 
-void shape_infer_min(xir::Op* cur) {
-  shape_infer_broadcast(cur);
-}
+void shape_infer_min(xir::Op* cur) { shape_infer_broadcast(cur); }
 
-void shape_infer_max(xir::Op* cur) {
-  shape_infer_broadcast(cur);
-}
+void shape_infer_max(xir::Op* cur) { shape_infer_broadcast(cur); }
 
 void shape_infer_threshold(xir::Op* cur) { shape_infer_remain(cur); }
 
@@ -1461,6 +1463,8 @@ void shape_infer_flatten(xir::Op* cur) {
 
 void shape_infer_identity(xir::Op* cur) { shape_infer_remain(cur); }
 
+void shape_infer_placeholder(xir::Op* cur) { shape_infer_remain(cur); }
+
 void shape_infer_upload(xir::Op* cur) { shape_infer_remain(cur); }
 
 void shape_infer_download(xir::Op* cur) { shape_infer_remain(cur); }
@@ -1623,13 +1627,15 @@ void shape_infer_conv2d_fix(xir::Op* cur) {
     std::transform(tmp.begin(), tmp.end(), padding.begin(),
                    [](auto i) { return i; });
   }
-  oh = std::ceil((in_shape[1] + padding[2] + padding[3] -
-                  (kernel[1] - 1) * dilation[1] - 1) /
-                 stride[1]) +
+  oh = std::floor(1.0f *
+                  (in_shape[1] + padding[2] + padding[3] -
+                   (kernel[1] - 1) * dilation[1] - 1) /
+                  stride[1]) +
        1;
-  ow = std::ceil((in_shape[2] + padding[0] + padding[1] -
-                  (kernel[0] - 1) * dilation[0] - 1) /
-                 stride[0]) +
+  ow = std::floor(1.0f *
+                  (in_shape[2] + padding[0] + padding[1] -
+                   (kernel[0] - 1) * dilation[0] - 1) /
+                  stride[0]) +
        1;
   oc = w_shape[0];
   std::vector<std::int32_t> new_out_shape = {in->get_shape().at(0), oh, ow, oc};
@@ -1668,13 +1674,15 @@ void shape_infer_depthwise_conv2d_fix(xir::Op* cur) {
     std::transform(tmp.begin(), tmp.end(), padding.begin(),
                    [](auto i) { return i; });
   }
-  oh = std::ceil((in_shape[1] + padding[2] + padding[3] -
-                  (kernel[1] - 1) * dilation[1] - 1) /
-                 stride[1]) +
+  oh = std::floor(1.0f *
+                  (in_shape[1] + padding[2] + padding[3] -
+                   (kernel[1] - 1) * dilation[1] - 1) /
+                  stride[1]) +
        1;
-  ow = std::ceil((in_shape[2] + padding[0] + padding[1] -
-                  (kernel[0] - 1) * dilation[0] - 1) /
-                 stride[0]) +
+  ow = std::floor(1.0f *
+                  (in_shape[2] + padding[0] + padding[1] -
+                   (kernel[0] - 1) * dilation[0] - 1) /
+                  stride[0]) +
        1;
   oc = w_shape[0] * w_shape[3];
   std::vector<std::int32_t> new_out_shape = {in->get_shape().at(0), oh, ow, oc};
@@ -1776,6 +1784,8 @@ void shape_infer_split_fix(xir::Op* cur) {
 
 void shape_infer_eltwise_fix(xir::Op* cur) { shape_infer_eltwise(cur); }
 
+void shape_infer_depthwise_fix(xir::Op* cur) { shape_infer_mul(cur); }
+
 void shape_infer_pool_fix(xir::Op* cur) {
   auto in = cur->get_input_tensor("input");
   auto in_shape = in->get_shape();
@@ -1793,11 +1803,11 @@ void shape_infer_pool_fix(xir::Op* cur) {
     std::transform(tmp.begin(), tmp.end(), padding.begin(),
                    [](auto i) { return i; });
   }
-  oh = std::ceil((in_shape[1] + padding[2] + padding[3] - kernel[1]) /
-                 stride[1]) +
+  oh = std::floor(1.0f * (in_shape[1] + padding[2] + padding[3] - kernel[1]) /
+                  stride[1]) +
        1;
-  ow = std::ceil((in_shape[2] + padding[0] + padding[1] - kernel[0]) /
-                 stride[0]) +
+  ow = std::floor(1.0f * (in_shape[2] + padding[0] + padding[1] - kernel[0]) /
+                  stride[0]) +
        1;
   oc = in_shape[3];
   std::vector<std::int32_t> new_out_shape = {in->get_shape().at(0), oh, ow, oc};

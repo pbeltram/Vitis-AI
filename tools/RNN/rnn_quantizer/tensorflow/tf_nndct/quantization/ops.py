@@ -1,6 +1,3 @@
-
-
-#
 # Copyright 2019 Xilinx Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,4 +29,4 @@ def scaleop(input, scale):
   return kernels.nndct_scale_op(input, float(scale))
 
 def table_lookup(input, table, fragpos, type):
-  return kernels.nndct_table_lookup(input, table, fragpos, type) 
+  return kernels.nndct_table_lookup(input, table, fragpos, type)

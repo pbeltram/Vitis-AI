@@ -72,11 +72,12 @@ class Dense(core.Dense):
     super().build(input_shape)
 
   def _quant_vars_init(self):
-    if self.valid_inputs is not None:
-      self._quant_vars['input_pos'] = self.quantizer.create_fp_tensor(
-          name='input_pos',
-          fp_name=self.valid_inputs[0])
-      #self._quant_vars['input_pos_stat'] = self.quantizer.create_fp_stat_tensor()
+    if self.valid_inputs is not None: # use to judge module analysis is done or not
+      if self.quantizer.need_quantize_tensor(self.node.name, 'input'):
+        self._quant_vars['input_pos'] = self.quantizer.create_fp_tensor(
+            name='input_pos',
+            fp_name=self.node.name,
+            tensor_type='input')
     self._quant_vars['kernel_pos'] = self.quantizer.create_fp_tensor(
         name='kernel_pos',
         fp_name=self.params_name[0],
@@ -89,31 +90,6 @@ class Dense(core.Dense):
     self._quant_vars['output_pos'] = self.quantizer.create_fp_tensor(
         name='output_pos',
         fp_name=self.valid_output[0])
-    #self._quant_vars['output_pos_stat'] = self.quantizer.create_fp_stat_tensor()
-
-  @property
-  def quant_results(self):
-    res = []
-    # input
-    if self.valid_inputs is not None:
-      res.append((self.valid_inputs[0],
-                 [self.quantizer.bita,
-                 int(self._quant_vars['input_pos'].numpy())]))
-    # kernel
-    res.append((self.params_name[0],
-               [self.quantizer.bitw,
-               int(self._quant_vars['kernel_pos'].numpy())]))
-    # bias
-    if self.use_bias:
-      res.append((self.params_name[1],
-                 [self.quantizer.bitw,
-                 int(self._quant_vars['bias_pos'].numpy())]))
-    # output
-    res.append((self.valid_output[0],
-               [self.quantizer.bita,
-               int(self._quant_vars['output_pos'].numpy())]))
-
-    return res
 
   def call(self, x):
     if self.valid_output is not None and not self.quant_vars_initialized:
@@ -137,12 +113,13 @@ class Dense(core.Dense):
                         node=self.node,
                         tensor_type='param')
 
-    if self.valid_inputs is not None:
-      x = self.quantizer.get_fp_and_quantize(
-              x,
-              self.valid_inputs[0],
-              self._quant_vars['input_pos'],
-              tensor_type='output')
+    if self.valid_inputs is not None: # use to judge module analysis is done or not
+      if self.quantizer.need_quantize_tensor(self.node.name, 'input'):
+        x = self.quantizer.get_fp_and_quantize(
+                x,
+                self.node.name,
+                self._quant_vars['input_pos'],
+                tensor_type='input')
 
     if self.quant_mode == 2 and self.quantizer.is_lstm:
       bakFlag = self.use_bias
@@ -185,10 +162,6 @@ class Add(tf.Module):
     self.quant_vars_initialized = False
 
   def _quant_vars_init(self):
-    if self.valid_inputs is not None:
-      self._quant_vars['input_pos'] = self.quantizer.create_fp_tensor(
-          name='input_pos',
-          fp_name=self.valid_inputs[0])
     self._quant_vars['output_pos'] = self.quantizer.create_fp_tensor(
         name='output_pos',
         fp_name=self.valid_output[0])
@@ -198,19 +171,6 @@ class Add(tf.Module):
       self._quant_vars_init()
       self.quant_vars_initialized = True
 
-    if self.valid_inputs is not None:
-      if self.node.in_nodes[0] == self.valid_inputs[0]:
-        x = self.quantizer.get_fp_and_quantize(
-                x,
-                self.valid_inputs[0],
-                self._quant_vars['input_pos'],
-                tensor_type='output')
-      else:
-        y = self.quantizer.get_fp_and_quantize(
-                y,
-                self.valid_inputs[0],
-                self._quant_vars['input_pos'],
-                tensor_type='output')
     output = tf.math.add(x, y)
     if self.valid_output is not None:
       output = self.quantizer.get_fp_and_quantize(
@@ -237,10 +197,6 @@ class Multiply(tf.Module):
     self.quant_vars_initialized = False
 
   def _quant_vars_init(self):
-    if self.valid_inputs is not None:
-      self._quant_vars['input_pos'] = self.quantizer.create_fp_tensor(
-          name='input_pos',
-          fp_name=self.valid_inputs[0])
     self._quant_vars['output_pos'] = self.quantizer.create_fp_tensor(
         name='output_pos',
         fp_name=self.valid_output[0])
@@ -250,19 +206,6 @@ class Multiply(tf.Module):
       self._quant_vars_init()
       self.quant_vars_initialized = True
 
-    if self.valid_inputs is not None:
-      if self.node.in_nodes[0] == self.valid_inputs[0]:
-        x = self.quantizer.get_fp_and_quantize(
-                x,
-                self.valid_inputs[0],
-                self._quant_vars['input_pos'],
-                tensor_type='output')
-      else:
-        y = self.quantizer.get_fp_and_quantize(
-                y,
-                self.valid_inputs[0],
-                self._quant_vars['input_pos'],
-                tensor_type='output')
     output = math_ops.multiply(x, y)
     if self.valid_output is not None:
       output = self.quantizer.get_fp_and_quantize(

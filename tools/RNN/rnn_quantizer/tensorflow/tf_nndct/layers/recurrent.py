@@ -1,6 +1,3 @@
-
-
-#
 # Copyright 2019 Xilinx Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from distutils.version import LooseVersion
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -214,6 +210,61 @@ class LSTMCell(keras_layers.recurrent.DropoutRNNCellMixin, Layer):
   def _build_v210(self, input_shape):
     default_caching_device = _caching_device(self)
     input_dim = input_shape[-1]
+    kernel_args = {
+        'shape': (input_dim, self.units),
+        'initializer': self.kernel_initializer,
+        'regularizer': self.kernel_regularizer,
+        'constraint': self.kernel_constraint,
+        'default_caching_device': default_caching_device
+    }
+    self.kernel_i = self.add_weight(name='kernel_i', **kernel_args)
+    self.kernel_f = self.add_weight(name='kernel_f', **kernel_args)
+    self.kernel_c = self.add_weight(name='kernel_c', **kernel_args)
+    self.kernel_o = self.add_weight(name='kernel_o', **kernel_args)
+
+    recurrent_args = {
+        'shape': (self.units, self.units),
+        'initializer': self.recurrent_initializer,
+        'regularizer': self.recurrent_regularizer,
+        'constraint': self.recurrent_constraint,
+    }
+    self.recurrent_kernel_i = self.add_weight(
+        name='recurrent_kernel_i', **recurrent_args)
+    self.recurrent_kernel_f = self.add_weight(
+        name='recurrent_kernel_f', **recurrent_args)
+    self.recurrent_kernel_c = self.add_weight(
+        name='recurrent_kernel_c', **recurrent_args)
+    self.recurrent_kernel_o = self.add_weight(
+        name='recurrent_kernel_o', **recurrent_args)
+
+    if self.use_bias:
+      bias_initializer = self.bias_initializer
+      if self.unit_forget_bias:
+        forget_bias_initializer = initializers.Ones
+      else:
+        forget_bias_initializer = bias_initializer
+
+      bias_args = {
+          'shape': (self.units,),
+          'regularizer': self.bias_regularizer,
+          'constraint': self.bias_constraint,
+      }
+      self.bias_i = self.add_weight(
+          name='bias_i', initializer=bias_initializer, **bias_args)
+      self.bias_f = self.add_weight(
+          name='bias_f', initializer=forget_bias_initializer, **bias_args)
+      self.bias_c = self.add_weight(
+          name='bias_c', initializer=bias_initializer, **bias_args)
+      self.bias_o = self.add_weight(
+          name='bias_o', initializer=bias_initializer, **bias_args)
+    else:
+      self.bias_i = None
+      self.bias_f = None
+      self.bias_c = None
+      self.bias_o = None
+    self.built = True
+
+    input_dim = input_shape[-1]
     args = {
         'shape': (input_dim, self.units),
         'initializer': self.kernel_initializer,
@@ -221,7 +272,6 @@ class LSTMCell(keras_layers.recurrent.DropoutRNNCellMixin, Layer):
         'constraint': self.kernel_constraint,
         'caching_device': default_caching_device
     }
-    kernel_names = ['i', 'f', 'c', 'o']
 
     self.kernel_i = self.add_weight(name='kernel_i', **args)
     self.kernel_f = self.add_weight(name='kernel_f', **args)
@@ -304,10 +354,92 @@ class LSTMCell(keras_layers.recurrent.DropoutRNNCellMixin, Layer):
     self.built = True
 
   def build(self, input_shape):
-    if _tf_utils.tf_version() < LooseVersion('2.1.0'):
-      return self._build_v200(input_shape)
+    input_dim = input_shape[-1]
+    tf_version = _tf_utils.tf_version()
+
+    if tf_version >= '2.1.0':
+      default_caching_device = _caching_device(self)
+
+    if tf_version < '2.1.0':
+      kernel_args = {
+          'shape': (input_dim, self.units),
+          'initializer': self.kernel_initializer,
+          'regularizer': self.kernel_regularizer,
+          'constraint': self.kernel_constraint,
+      }
+      recurrent_args = {
+          'shape': (self.units, self.units),
+          'initializer': self.recurrent_initializer,
+          'regularizer': self.recurrent_regularizer,
+          'constraint': self.recurrent_constraint,
+      }
     else:
-      return self._build_v210(input_shape)
+      # There is an addtional 'default_caching_device' argument after tf 2.1
+      kernel_args = {
+          'shape': (input_dim, self.units),
+          'initializer': self.kernel_initializer,
+          'regularizer': self.kernel_regularizer,
+          'constraint': self.kernel_constraint,
+          'caching_device': default_caching_device
+      }
+      recurrent_args = {
+          'shape': (self.units, self.units),
+          'initializer': self.recurrent_initializer,
+          'regularizer': self.recurrent_regularizer,
+          'constraint': self.recurrent_constraint,
+          'caching_device': default_caching_device
+      }
+
+    # Split kernel/recurrent_kernel/bias to 4 parts as RNN compiler
+    # requires this.
+    self.kernel_i = self.add_weight(name='kernel_i', **kernel_args)
+    self.kernel_f = self.add_weight(name='kernel_f', **kernel_args)
+    self.kernel_c = self.add_weight(name='kernel_c', **kernel_args)
+    self.kernel_o = self.add_weight(name='kernel_o', **kernel_args)
+
+    self.recurrent_kernel_i = self.add_weight(
+        name='recurrent_kernel_i', **recurrent_args)
+    self.recurrent_kernel_f = self.add_weight(
+        name='recurrent_kernel_f', **recurrent_args)
+    self.recurrent_kernel_c = self.add_weight(
+        name='recurrent_kernel_c', **recurrent_args)
+    self.recurrent_kernel_o = self.add_weight(
+        name='recurrent_kernel_o', **recurrent_args)
+
+    if self.use_bias:
+      bias_initializer = self.bias_initializer
+      if self.unit_forget_bias:
+        forget_bias_initializer = initializers.get('ones')
+      else:
+        forget_bias_initializer = bias_initializer
+
+      if tf_version < '2.1.0':
+        bias_args = {
+            'shape': (self.units,),
+            'regularizer': self.bias_regularizer,
+            'constraint': self.bias_constraint,
+        }
+      else:
+        bias_args = {
+            'shape': (self.units,),
+            'regularizer': self.bias_regularizer,
+            'constraint': self.bias_constraint,
+            'caching_device': default_caching_device
+        }
+      self.bias_i = self.add_weight(
+          name='bias_i', initializer=bias_initializer, **bias_args)
+      self.bias_f = self.add_weight(
+          name='bias_f', initializer=forget_bias_initializer, **bias_args)
+      self.bias_c = self.add_weight(
+          name='bias_c', initializer=bias_initializer, **bias_args)
+      self.bias_o = self.add_weight(
+          name='bias_o', initializer=bias_initializer, **bias_args)
+    else:
+      self.bias_i = None
+      self.bias_f = None
+      self.bias_c = None
+      self.bias_o = None
+    self.built = True
 
   def _compute_carry_and_output(self, x, h_tm1, c_tm1):
     """Computes carry and output using split kernels."""
@@ -557,7 +689,6 @@ class LSTM(keras_layers.RNN):
         implementation=implementation,
         dtype=kwargs.get('dtype'),
         trainable=kwargs.get('trainable', True))
-    #super(LSTM, self).__init__(
     keras_layers.RNN.__init__(
         self,
         cell,
@@ -572,7 +703,7 @@ class LSTM(keras_layers.RNN):
 
 _generate_zero_filled_state_for_cell = keras_layers.recurrent._generate_zero_filled_state_for_cell
 
-if _tf_utils.tf_version() < LooseVersion('2.1.0'):
+if _tf_utils.tf_version() < '2.1.0':
   _caching_device = None
 else:
   _caching_device = keras_layers.recurrent._caching_device

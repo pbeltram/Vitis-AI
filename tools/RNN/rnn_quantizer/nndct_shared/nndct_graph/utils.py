@@ -1,8 +1,10 @@
 
+import sys
 from typing import List
 
 from nndct_shared.base import NNDCT_OP
-from nndct_shared.nndct_graph.base_graph import Graph
+from nndct_shared.nndct_graph import Graph, Operation
+from nndct_shared.utils import NndctOption, NndctScreenLogger
 
 
 def glue_group_members(graph, groups, start_node, c_node):
@@ -36,11 +38,14 @@ def group_up(graph, groups, OpType=None, POpType=None):
   for n in graph.nodes:
     if not n.in_quant_part:
       continue
+    if NndctOption.nndct_stat.value > 2:
+      print('node name: {} parent number: {}'.format(n.name, len(graph.parents(n.name))))
     if groups[n.name][0] == n.name and n.op.type == OpType and \
         len(graph.parents(n.name)) == 1 and __is_valid_parent(graph.parents(n.name)[0]):
       start_node = groups[graph.parents(n.name)[0].name][0]
       groups = glue_group_members(graph, groups, start_node, n.name)
-      # print('---- Grouping node %s and %s' % (start_node, n.name))
+      if NndctOption.nndct_stat.value > 2:
+        print('---- Grouping node %s and %s' % (start_node, n.name))
   return groups
 
 
@@ -73,3 +78,4 @@ def transformed_axis(src: str, dst: str, ndim: int, dim: int) -> int:
   elif src == "NHWC" and dst == "NCHW":
     return dim + [0, 1, 1, -2][dim]
   
+

@@ -22,7 +22,7 @@ from enum import Enum
 
 from tensorflow.core.framework import types_pb2
 
-class DTypes(str, Enum):
+class DType(str, Enum):
   FLOAT = 'float',
   FLOAT16 = 'float16',
   DOUBLE = 'double',
@@ -45,19 +45,19 @@ def from_numpy(dtype):
 def to_numpy(dtype):
   return _NNDCT_TO_NP[dtype]
 
-# mapping dtypes from nndct to numpy
+# mapping DType from nndct to numpy
 _NNDCT_TO_NP = {
-    DTypes.FLOAT: np.float32,
-    DTypes.FLOAT16: np.float16,
-    DTypes.DOUBLE: np.float64,
-    DTypes.INT32: np.int32,
-    DTypes.INT16: np.int16,
-    DTypes.INT8: np.int8,
-    DTypes.UINT8: np.uint8,
-    DTypes.UINT16: np.uint16,
-    DTypes.INT64: np.int64,
-    DTypes.UINT64: np.uint64,
-    DTypes.BOOL: np.bool,
+    DType.FLOAT: np.float32,
+    DType.FLOAT16: np.float16,
+    DType.DOUBLE: np.float64,
+    DType.INT32: np.int32,
+    DType.INT16: np.int16,
+    DType.INT8: np.int8,
+    DType.UINT8: np.uint8,
+    DType.UINT16: np.uint16,
+    DType.INT64: np.int64,
+    DType.UINT64: np.uint64,
+    DType.BOOL: np.bool,
 }
 
 def from_tf(dtype):
@@ -66,22 +66,22 @@ def from_tf(dtype):
 def to_tf(dtype):
   return _NNDCT_TO_TF[dtype]
 
-# mapping dtypes from tensorflow to nndct
+# mapping DType from tensorflow to nndct
 _TF_TO_NNDCT = {
-    types_pb2.DT_FLOAT: DTypes.FLOAT,
-    types_pb2.DT_HALF: DTypes.FLOAT16,
-    types_pb2.DT_DOUBLE: DTypes.DOUBLE,
-    types_pb2.DT_INT32: DTypes.INT32,
-    types_pb2.DT_INT16: DTypes.INT16,
-    types_pb2.DT_INT8: DTypes.INT8,
-    types_pb2.DT_UINT8: DTypes.UINT8,
-    types_pb2.DT_UINT16: DTypes.UINT16,
-    types_pb2.DT_INT64: DTypes.INT64,
-    types_pb2.DT_STRING: DTypes.STRING,
-    types_pb2.DT_COMPLEX64: DTypes.COMPLEX64,
-    types_pb2.DT_COMPLEX128: DTypes.COMPLEX128,
-    types_pb2.DT_BOOL: DTypes.BOOL,
-    types_pb2.DT_QUINT8: DTypes.QUINT8
+    types_pb2.DT_FLOAT: DType.FLOAT,
+    types_pb2.DT_HALF: DType.FLOAT16,
+    types_pb2.DT_DOUBLE: DType.DOUBLE,
+    types_pb2.DT_INT32: DType.INT32,
+    types_pb2.DT_INT16: DType.INT16,
+    types_pb2.DT_INT8: DType.INT8,
+    types_pb2.DT_UINT8: DType.UINT8,
+    types_pb2.DT_UINT16: DType.UINT16,
+    types_pb2.DT_INT64: DType.INT64,
+    types_pb2.DT_STRING: DType.STRING,
+    types_pb2.DT_COMPLEX64: DType.COMPLEX64,
+    types_pb2.DT_COMPLEX128: DType.COMPLEX128,
+    types_pb2.DT_BOOL: DType.BOOL,
+    types_pb2.DT_QUINT8: DType.QUINT8
 }
 
 _NNDCT_TO_TF = {nndct: tf for tf, nndct in _TF_TO_NNDCT.items()}

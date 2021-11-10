@@ -228,7 +228,7 @@ def min_vlog_level():
 
   if _min_vlog_level is None:
     try:
-      _min_vlog_level = int(_os.getenv('NNDCT_MIN_VLOG_LEVEL', 0))
+      _min_vlog_level = int(_os.getenv('VAI_MIN_VLOG_LEVEL', 0))
     except ValueError:
       _min_vlog_level = 0
 

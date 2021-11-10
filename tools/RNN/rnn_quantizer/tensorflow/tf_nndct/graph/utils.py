@@ -32,7 +32,7 @@ from tf_nndct.utils import viz
 
 
 def maybe_export_graph(path, graph):
-  if not os.environ.get('EXPORT_NNDCT_TF_PARSER_INTERNAL', ''):
+  if not os.environ.get('VAI_TF_PARSER_DEBUG', ''):
     return
   dir_name = os.path.dirname(path)
   generic_utils.mkdir_if_not_exist(dir_name)
@@ -96,9 +96,14 @@ def topological_sort(graph):
     all_nodes = {node.name for node in graph.nodes}
     ready_nodes = {node.name for node in reordered_nodes}
     not_ready_nodes = all_nodes - ready_nodes
-    raise RuntimeError(('Couldn\'t sort the graph in topological order as'
-        'there is at least one cycle in the graph. There is {} not-ready'
-        'nodes: {}'.format(len(not_ready_nodes), not_ready_nodes)))
+    detailed_message = ['node_name: num_ready_inputs vs. num_inputs']
+    for node_name in not_ready_nodes:
+      node = graph.node(node_name)
+      detailed_message.append('{}: {} vs. {}'.format(
+          node_name, num_ready_inputs[node_name], node.num_inputs))
+    raise RuntimeError(('Couldn\'t sort the graph in topological order as '
+        'there is at least one cycle in the graph. Not ready '
+        'nodes: \n{}'.format('\n'.join(detailed_message))))
 
   topo_graph = ops.Graph()
   for node in reordered_nodes:

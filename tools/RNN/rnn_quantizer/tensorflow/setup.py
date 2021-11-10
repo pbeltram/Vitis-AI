@@ -67,11 +67,12 @@ tf_lflags = tf.sysconfig.get_link_flags()
 ver_list = tf.__version__.split('-')[0].split('.')
 tf_version = int(ver_list[0]) * 1000 + int(ver_list[1]) * 10 + int(ver_list[2])
 
-extra_compile_args = ['-std=c++11', '-fPIC']
+extra_compile_args = ['-std=c++14', '-fPIC']
 # Currently tensorflow triggers return type errors.
 extra_compile_args += ['-Wno-return-type', '-DTF_VERION={}'.format(tf_version)]
 extra_compile_args += tf_cflags
 extra_link_args = tf_lflags
+extra_link_args.append('-Wl,-rpath='+os.path.realpath(NNDCT_LIB_DIR))
 
 if enable_gpu:
   extra_compile_args += ['-DGOOGLE_CUDA']
@@ -96,7 +97,7 @@ op_ext = Extension(
     language='c++',
     include_dirs=include_dirs,
     library_dirs=[NNDCT_LIB_DIR],
-    runtime_library_dirs=[os.path.realpath(NNDCT_LIB_DIR)],
+    #runtime_library_dirs=[os.path.realpath(NNDCT_LIB_DIR)],
     libraries=['nndct'],
     extra_compile_args=extra_compile_args,
     extra_link_args=extra_link_args)

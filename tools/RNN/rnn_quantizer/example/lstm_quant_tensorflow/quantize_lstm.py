@@ -58,7 +58,8 @@ model.load_weights(model_path)
 
 if args.quant_mode == 'calib' or args.quant_mode == 'test':
     single_batch_data = X_test[:1, ]
-    input_signature = tf.TensorSpec(single_batch_data.shape[1:], tf.int32)
+    #input_signature = tf.TensorSpec(single_batch_data.shape[1:], tf.int32)
+    input_signature = tf.TensorSpec(single_batch_data.shape, tf.int32)
     print('Start quantizer creation...', flush=True)
     quantizer = tf_quantizer(model, 
                              input_signature, 

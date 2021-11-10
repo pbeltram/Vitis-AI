@@ -66,14 +66,6 @@ class TFQuantizer(BaseQuantizer):
     return tf.Variable(
         init_val, name=name, dtype=tf.float32, shape=None, trainable=False)
 
-  def create_fp_stat_tensor(self):
-    # fp statistic array
-    # fp[x] means the happen times of fix_pos=x-32
-    if self.quant_mode == 2:
-      return None
-    if self.quant_mode > 0:
-      return tf.zeros([64], tf.float32)
-
   def get_fp_and_quantize(
       self,
       input_tensor,
@@ -87,15 +79,14 @@ class TFQuantizer(BaseQuantizer):
       return input_tensor
 
     # get fixed position
-    bw = self.bitw
     mth = 3
     if tensor_type != 'param':
-      bw = self.bita
       mth = 4
+    bnfp = self.get_bnfp(fp_name, False, tensor_type)
+    bw = bnfp[0]
     if self.quant_mode == 1:
       # must be in eager mode
       #print('---- Calculating fix pos of {}'.format(fp_name), flush=True)
-      bnfp = self.get_bnfp(fp_name, False, tensor_type)
       fp_tensor.assign(
           diffs_fix_pos(input=input_tensor, bit_width=bw, range=5, method=mth))
       bnfp[1] = (int)(fp_tensor.numpy())
@@ -165,22 +156,10 @@ class TFQuantizer(BaseQuantizer):
       layer.params_name = [v.name for v in node.op.params.values()]
       layer.quantizer = self
 
-  def gather_quant_info(self):
-    # loop quant submodules to gather in their variables
-    for layer, node in self._layer_nodes:
-      if not self.configer.is_node_quantizable(node, lstm=True):
-        continue
-      #print(layer.quant_results)
-      layer_res = layer.quant_results
-      for name, bnfp in layer_res:
-        #print('---- {} gather {} {}'.format(node.name, name, bnfp))
-        self.set_bnfp(name, bnfp)
-
   def export_quant_config(self, export_file=None):
     file_name = export_file or self.export_file
     if isinstance(file_name, str):
       if self.quant_mode in [1, 3]:
-        #self.gather_quant_info()
         self.organize_quant_pos()
         with open(file_name, 'w') as f:
           f.write(nndct_utils.to_jsonstr(self.quant_config))
@@ -278,16 +257,7 @@ class TFQuantizer(BaseQuantizer):
     outputs_at_all_steps = []
     for _, graph in self._cell_graphs:
       for node in graph.nodes:
-        if node.op.type == OpTypes.INPUT:
-          all_inputs = self._quantized_input[node.name]
-          outputs = []
-
-          step = 1 if 'input_2' in node.name else 4
-          # There are 4 dense nodes taking input.
-          for i in range(0, len(all_inputs), step):
-            outputs.append(all_inputs[i])
-        else:
-          outputs = self._node_to_layer[node.name].saved_outputs()
+        outputs = self._node_to_layer[node.name].saved_outputs()
         print('[INFO] saved outputs of {}: steps={}, shape={}'.format(
             node.name, len(outputs), [output.shape for output in outputs[0]]))
 

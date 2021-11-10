@@ -271,7 +271,7 @@ Detector::Detector(const string& model_file, const string& weights_file){
   Caffe::set_mode(Caffe::CPU);
 #else
   Caffe::set_mode(Caffe::GPU);
-  Caffe::SetDevice(1);
+  Caffe::SetDevice(0);
 #endif
 
   /* Load the network. */
@@ -297,7 +297,7 @@ vector<vector<float>> Detector::Detectv4(string file, int classes, vector<float>
     int width = net_->output_blobs()[iter]->width();
     
     int channels = net_->output_blobs()[iter]->channels();
-    if (channels != 255)
+    if (channels != (classes + 5) * anchorCnt)
         continue;
 
     scale_feature.push_back(width);
@@ -311,10 +311,10 @@ vector<vector<float>> Detector::Detectv4(string file, int classes, vector<float>
     int height = net_->output_blobs()[iter]->height();
     int width = net_->output_blobs()[iter]->width();
     int channels = net_->output_blobs()[iter]->channels();
-   
-    if (channels != 255)
-        continue;
     
+    if (channels != (classes + 5) * anchorCnt)
+        continue;
+   
     int index = 0;
     for (int i = 0; i < net_->num_outputs(); i++) {
       if(width == scale_feature[i]) {
@@ -530,3 +530,4 @@ int main(int argc, char** argv) {
   LOG(FATAL) << "This example requires OpenCV; compile with USE_OPENCV.";
 }
 #endif  // USE_OPENCV
+

@@ -11,7 +11,7 @@ IF (NOT APPLE)
 ENDIF()
 
 IF (APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O2")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O2")
     add_definitions(-DAPPLE)
 ENDIF()
 
@@ -30,7 +30,7 @@ if(NOT WITH_OMP)
 endif()
 
 # need to be at least 30 or __shfl_down in reduce wont compile
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_30,code=sm_30 -O2")
+#set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_30,code=sm_30")
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_35,code=sm_35")
 
 set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_50,code=sm_50")
@@ -46,8 +46,17 @@ IF (CUDA_VERSION GREATER 8.9)
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_70,code=sm_70")
 ENDIF()
 
+IF (CUDA_VERSION GREATER 9.9)
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75")
+ENDIF()
+
+IF (CUDA_VERSION GREATER 10.9)
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_80,code=sm_80")
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -gencode arch=compute_86,code=sm_86")
+ENDIF()
+
 if (NOT APPLE)
-    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} --std=c++11")
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -O2 --std=c++14")
     set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -Xcompiler -fopenmp")
 ENDIF()
 

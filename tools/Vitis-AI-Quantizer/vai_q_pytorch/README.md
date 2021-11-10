@@ -1,4 +1,4 @@
-# Vitis AI Quantizer for Pytorch (vai_q_pytorch)
+# VAI_Q_PYTORCH
 
 ### Introduction
 vai_q_pytorch is short for Vitis AI Quantizer for Pytorch. It is a tool for neural network model optimization with Pytorch model input.
@@ -8,25 +8,28 @@ vai_q_pytorch is designed as a part of a standard platform for neural network de
     3.  Deploy the modified IR on different platform, such as DPU and Xilinx AI Engine.<br>
     4.  Assemble the modified computation graph back to Pytorch. In that way abilities and tools in Pytorch such as pre-processing, post processing and distribution system can be used.<br>
 
-### Supported and Limitaion
+
+### Supported and Limitation
 
 * Python
 1. Support version 3.6 ~ 3.7. 
     
 * Pytorch
-1. Support version 1.1 ~ 1.4. 
+1. Support version 1.1 ~ 1.7.1. 
 2. QAT does NOT work with pytorch 1.1.
 3. Data Parallelism is NOT supported.
     
 * Models
 1. Classification Models in Torchvision. 
 2. Pytorch models in Xilinx Modelzoo. 
-    
+3. LSTM models (standard LSTM and customized LSTM)
+
 ### Quick Start in Docker environment
 
-If you work in Vitis-AI 1.3 docker, there is a conda environment "vitis-ai-pytorch", in which vai_q_pytorch package is already installed. 
-In this conda environment, python version is 3.6, pytorch version is 1.4 and torchvision version is 0.5.0. You can directly start our "resnet18" example without installation steps.
-If you want a different “python/pytorch/torchvision” version, install vai_q_pytorch from source code.
+If you work in Vitis-AI 1.3 and later version of docker, there is a conda environment "vitis-ai-pytorch", in which vai_q_pytorch package is already installed. 
+In this conda environment, python version is 3.6, pytorch version is 1.4.0 and torchvision version is 0.5.0. You can directly start our "resnet18" example without installation steps.
+A new Conda environment with a specified PyTorch version (1.2~1.7.1) can be created using the /opt/vitis_ai/scripts/replace_pytorch.sh script. This script clones a Conda environment from vitis-ai-pytorch, uninstalls the original PyTorch, Torchvision and vai_q_pytorch
+packages, and then installs the specified version of PyTorch, Torchvision, and re-installs vai_q_pytorch from source code.
 - Copy example/resnet18_quant.py to docker environment
 - Download pre-trained [Resnet18 model](https://download.pytorch.org/models/resnet18-5c106cde.pth)
   ```shell
@@ -38,7 +41,7 @@ If you want a different “python/pytorch/torchvision” version, install vai_q_
   ```shell
   python resnet18_quant.py --quant_mode float
   ```
-- Quantize, using a subset(200 images) of validation data for calibration. Because we are in quantize calibration process, the displayed loss and accuracy are meaningless.
+- Quantize, using a subset (200 images) of validation data for calibration. Because we are in quantize calibration process, the displayed loss and accuracy are meaningless.
   ```shell
   python resnet18_quant.py --quant_mode calib --subset_len 200
   
@@ -49,16 +52,16 @@ If you want a different “python/pytorch/torchvision” version, install vai_q_
   ```
 - Export xmodel 
   ```shell
-  python resnet18_quant.py --quant_mode test --subset_len 1 --batch_size=1 --deploy
+  python resnet18_quant.py --quant_mode test --subset_len 1 --batch_size 1 --deploy
   ```
   
 ### Install from source code
 
-Installation with Anaconda is suggested. And if there is an old version of vai_q_pytorch in the conda enviorment, suggest you remove all of its related files before install the new version. 
+Installation with Anaconda is suggested. And if there is an old version of vai_q_pytorch in the conda enviorment, suggest you remove all its related files before install the new version. 
 
 To install vai_q_pytorch, do as follows:
 
-##### Pre step 1 : CUDA_HOME environment variable in .bashrc
+##### Pre step 1: CUDA_HOME environment variable in .bashrc
 For GPU version, if CUDA library is installed in /usr/local/cuda, add the following line into .bashrc. If CUDA is in other directory, change the line accordingly.
 
     export CUDA_HOME=/usr/local/cuda 
@@ -67,18 +70,22 @@ For CPU version, remove all CUDA_HOME environment variable setting in your .bash
 
     unset CUDA_HOME
 
-##### Pre step 2 : install Pytorch(1.1-1.4) and torchvision
-Here take pytorch 1.4 and torchvision 0.5.0 as an example, detailed instructions for other versions are in [pytorch](https://pytorch.org/) website.
+##### Pre step 2: install Pytorch(1.1-1.7.1) and torchvision
+Here take pytorch 1.7.1 and torchvision 0.8.2 as an example, detailed instructions for other versions are in [pytorch](https://pytorch.org/) website.
 
-    pip install torch==1.4.0 torchvision==0.5.0 
+    pip install torch==1.7.1+cu101 torchvision==0.8.2+cu101 -f https://download.pytorch.org/whl/torch_stable.html
 
-##### Pre step 3 : install other dependencies
+##### Pre step 3: install other dependencies
     pip install -r requirements.txt 
 
 ##### Now install the main component:
-    cd ./pytorch_binding 
-    python setup.py install (for user) 
-    python setup.py develop (for developer) 
+For user NOT change the code frequently, install with commands:
+
+    cd ./pytorch_binding; python setup.py install 
+    
+For user WILL change the code frequently, install with commands:
+
+    cd ./pytorch_binding; python setup.py develop 
 
 ##### Verify the installation:
 If the following command line does not report error, the installation is done.
@@ -98,13 +105,13 @@ import torch
 
 ### vai_q_pytorch Tool Usage
 
-vai_q_pytorch is designed to work as a Pytorch plugin. We provide simplest APIs to introduce our FPAG-friendly quantization feature.
+vai_q_pytorch is designed to work as a Pytorch plugin. We provide simplest APIs to introduce our FPGA-friendly quantization feature.
 For a well-defined model, user only need to add 2-3 lines to get a quantize model object.
 
 ##### Model pre-requirements for quantizer
 - The model to be quantized should include forward method only. All other functions should be moved outside or move to a derived class. 
 These functions usually work as pre-processing and post-processing. If they are not moved outside, 
-our API will remove them in our quantized module, which will cause unexpected behaviour when forwarding quantized module. <br>
+our API will remove them in our quantized module, which will cause unexpected behavior when forwarding quantized module. <br>
 - The float model should pass "jit trace test". First set the float module to evaluation status, then use “torch.jit.trace” function to test the float model. Make sure the float module can pass the trace test. <br>
 
 ##### Add vai_q_pytorch APIs to float scripts
@@ -113,7 +120,7 @@ Quantizer API will replace float module with quantized module and normal evaluat
 Quantize calibration determines "quantize" op parameters in evaluation process if we set flag quant_mode to "calib". 
 After calibration, we can evaluate quantized model by setting quant_mode to "test".
 
-Take resnet18_quant.py to demostrate how to add vai_q_pytorch APIs in float code. 
+Take resnet18_quant.py to demonstrate how to add vai_q_pytorch APIs in float code. 
 Xilinx [Pytorch Modelzoo](https://github.com/Xilinx/AI-Model-Zoo) includes float model and quantized model.
 It is a good idea to check the difference between float and quantized script, like "code/test.py" and "quantize/quant.py" in ENet.
 
@@ -150,7 +157,7 @@ Pay attention to vai_q_pytorch log messages to check the flow status.<br>
 When doing calibration forward, we borrow float evaluation flow to minimize code change from float script. So there are loss and accuracy displayed in the end. 
 They are meaningless, just skip them. Pay more attention to the colorful log messages with special keywords "NNDCT".
 
-Another important thing is to contral iteration numbers during quantization and evaluation. 
+Another important thing is to control iteration numbers during quantization and evaluation. 
 Generally, 100-1000 images are enough for quantization and the whole validation set are required for evaluation. 
 The iteration numbers can be controlled in the data loading part.
 In this case, argument "subset_len" controls how many images used for network forwarding. 
@@ -169,7 +176,7 @@ When this command finishes, the displayed accuracy is the right accuracy for qua
 
 * To export xmodel, batch size 1 is must for compilation, and subset_len=1 is to avoid redundant iteration. Run the following command:
 ```shell
-    python resnet18_quant.py --quant_mode test --subset_len 1 --batch_size=1 --deploy
+    python resnet18_quant.py --quant_mode test --subset_len 1 --batch_size 1 --deploy
 ```
 Skip loss and accuracy displayed in log in this run. 
 Xmodel file for Vitis AI compiler will be generated under output directory “./quantize_result”. It will be further used to deploy this model to FPGA. 
@@ -241,7 +248,7 @@ Sometimes direct quantization accuracy is not high enough, then it needs finetun
   ```
 
 ##### Finetune quantized model
-- This mode can be used to finetune a quantized model(loading float model parameters), also can be used to do quantization-aware-training (QAT) from scratch.
+- This mode can be used to finetune a quantized model (loading float model parameters), also can be used to do quantization-aware-training (QAT) from scratch.
 - It needs to add some vai_q_pytorch interface functions based on the float model training script.
 - The mode does not work with pytorch version 1.1. 
 - The mode requests the trained model can not use +/- operator in model forwarding code. It needs to replace them with torch.add/torch.sub module.
@@ -274,7 +281,7 @@ Sometimes direct quantization accuracy is not high enough, then it needs finetun
 ```
 
 
-## vai_q_pytorch main APIs
+### vai_q_pytorch main APIs
 
 The APIs for CNN are in module [pytorch_binding/pytorch_nndct/apis.py](pytorch_binding/pytorch_nndct/apis.py):
 ##### Function torch_quantizer will create a quantizer.

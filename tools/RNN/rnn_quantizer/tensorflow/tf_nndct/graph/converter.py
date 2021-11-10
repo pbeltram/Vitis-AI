@@ -1,6 +1,3 @@
-
-
-#
 # Copyright 2019 Xilinx Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +20,8 @@ from __future__ import print_function
 import numpy as np
 
 from enum import Enum, unique, auto
+from tensorflow.python.framework import dtypes as tf_dtypes
+from tensorflow.python.keras import Sequential
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import layers
 
@@ -53,10 +52,10 @@ class OpBuilder(object):
     self._ignores = []
     self._converter_map = {}
 
-    # Start from 0.
     op_type = self._op.type
-    count = self._OP_COUNT.get(op_type, -1)
-    self._OP_COUNT[op_type] = count + 1
+    if op_type not in self._OP_COUNT:
+      self._OP_COUNT[op_type] = 0
+    self._OP_COUNT[op_type] = self._OP_COUNT[op_type] + 1
 
   def ignore(self, names):
     if not generic_utils.is_list_or_tuple(names):
@@ -75,8 +74,8 @@ class OpBuilder(object):
 
   def attr(self, name, value):
     if not self._AttrName:
-      raise ValueError('Op {} does not has any attributes'.format(
-          type(self._op)))
+      raise ValueError('Op {} does not has any attributes'.format(type(
+          self._op)))
     # if not isinstance(name, self._AttrName):
     #   name = getattr(self._AttrName, name)
     for attr in self._AttrName:
@@ -96,9 +95,9 @@ class OpBuilder(object):
             type(self._op), name))
 
     op_type = self._op.type
-    count = self._OP_COUNT[op_type]
+    index = self._OP_COUNT[op_type] - 1
     # Naming tensor like dense_0:weight
-    name = '{}_{}:{}'.format(op_type, count, name)
+    name = '{}_{}:{}'.format(op_type, index, name)
     tensor = tensor_utils.from_tf_numpy(name, value)
     self._op.set_param(param, tensor)
     return self
@@ -127,20 +126,16 @@ class Cast(ops.Operation):
     super(Cast, self).__init__(OpTypes.CAST, *args, **kwargs)
     self._attr_value_mem = {self.AttrName.SRC: [], self.AttrName.DST: []}
 
-    #self._attrs[self.AttrName.SRC] = ops.Attr(
-    #    name=self.AttrName.SRC,
-    #    value_type=dtypes.DTypes,
-    #    size=1,
-    #    value_mem=self._attr_value_mem[self.AttrName.SRC],
-    #    occurence_type=OccurenceType.REQUIRED,
-    #    annotation="""The source type.""")
-    #self._attrs[self.AttrName.DST] = ops.Attr(
-    #    name=self.AttrName.DST,
-    #    value_type=dtypes.DTypes,
-    #    size=1,
-    #    value_mem=self._attr_value_mem[self.AttrName.DST],
-    #    occurence_type=OccurenceType.REQUIRED,
-    #    annotation="""The destination type.""")
+class TFGeneric(ops.Operation):
+  """A generic op that can represent any keras layer."""
+
+  @unique
+  class AttrName(base_op.AutoName):
+    ORIG_LAYER_CLASS = auto()
+
+  def __init__(self, *args, **kwargs):
+    super(TFGeneric, self).__init__(OpTypes.GENERIC, *args, **kwargs)
+    self._define_attr(self.AttrName.ORIG_LAYER_CLASS, value_type=type, size=1)
 
 #TODO(yuwang): Use _define_attr to define attr.
 class TFInput(ops.Operation):
@@ -151,8 +146,7 @@ class TFInput(ops.Operation):
     DTYPE = auto()
 
   def __init__(self, *args, **kwargs):
-    super(TFInput, self).__init__(OpTypes.INPUT, *args,
-                                      **kwargs)
+    super(TFInput, self).__init__(OpTypes.INPUT, *args, **kwargs)
     self._attr_value_mem = {self.AttrName.SHAPE: [], self.AttrName.DTYPE: []}
 
     self._attrs[self.AttrName.SHAPE] = ops.Attr(
@@ -164,7 +158,7 @@ class TFInput(ops.Operation):
     )
     self._attrs[self.AttrName.DTYPE] = ops.Attr(
         name=self.AttrName.DTYPE,
-        value_type=dtypes.DTypes,
+        value_type=dtypes.DType,
         size=1,
         value_mem=self._attr_value_mem[self.AttrName.DTYPE],
         occurence_type=ops.OccurenceType.REQUIRED,
@@ -262,6 +256,7 @@ class TFBatchNorm(base_op.BatchNorm):
     self._attr_value_mem[self.AttrName.OUT_DIM][:] = [value]
 
 class TFConv1D(base_op.Operation):
+
   @unique
   class ParamName(base_op.AutoName):
     WEIGHT = 'kernel'
@@ -271,6 +266,7 @@ class TFConv1D(base_op.Operation):
     super(TFConv1D, self).__init__(OpTypes.CONV1D, *args, **kwargs)
 
 class TFConv2D(base_op.Conv2d):
+
   def __init__(self, *args, **kwargs):
     super(TFConv2D, self).__init__(OpTypes.CONV2D, *args, **kwargs)
 
@@ -332,10 +328,13 @@ class TFConv2D(base_op.Conv2d):
     self._attr_value_mem[self.AttrName.BIAS_TERM][:] = [value]
 
 class TFConvTranspose2d(TFConv2D):
+
   def __init__(self, *args, **kwargs):
     super(TFConvTranspose2d, self).__init__(OpTypes.CONVTRANSPOSE2D, *args,
                                             **kwargs)
+
 class TFMaxPool1D(base_op.Operation):
+
   def __init__(self, *args, **kwargs):
     super(TFMaxPool1D, self).__init__(OpTypes.MAX_POOL1D, *args, **kwargs)
 
@@ -445,8 +444,7 @@ class TFStackedRNNCells(ops.Operation):
     super(TFStackedRNNCells, self).__init__(OpTypes.STACKED_RNN_CELLS, *args,
                                             **kwargs)
 
-    self._define_attr(
-        self.AttrName.CELLS, value_type=ops.Operation, size=None)
+    self._define_attr(self.AttrName.CELLS, value_type=ops.Operation, size=None)
 
 class TFSimpleRNN(ops.Operation):
 
@@ -527,83 +525,113 @@ class RegisterNodeConverter(object):
       _node_converter_registry.register(f, op_type)
     return f
 
+def _convert_node_as_is(node):
+  """Convert a node with unregistered type by saving node config as-is."""
+  op = OpBuilder(TFGeneric, node.get_config(),
+                 node.get_params()).attr('orig_layer_class',
+                                         type(node.orig_op)).build()
+  return create_node(node.name, op, node.input_names, node.output_names)
+
 def convert(node):
-  """Takes a `TFParserOp` object and converts it to NNDCT `Operation`.
-  Use the `op`'s name to set the name of converted node.
-  Looks up the op's convertion function in the registry and calls it to
-  generate a new `Operation` according to the attributes of `op`.
-  Note that the converted node's topological information is not set here.
+  """Convert a parser's computation node to a TF graph's node.
+
+  Looks up node's convertion function in the registry and calls it to
+  generate a new ops.Node object according to the attributes of node.
+  The node's name will be used to set the name of the converted node.
+  A tf.keras.layers.Layer instance without type registry will be converted
+  to a TFGeneric node.
 
   Args:
-    op_type: A `NodeDef` object.
-    attrs: A `NodeDef` object.
+    node: A `ComputationNode` object.
 
   Returns:
-    A `Operation` object converted from `op`.
+    A `ops.Node` object converted from `ComputationNode`.
   """
-  if node.type not in _node_converter_registry.list():
+
+  if node.type in _node_converter_registry.list():
+    convert_func = _node_converter_registry.lookup(node.type)
+    nndct_nodes = convert_func(node)
+  elif isinstance(node.orig_op, layers.Layer):
+    nndct_nodes = _convert_node_as_is(node)
+  else:
+    print(node.orig_op)
     raise NotImplementedError("Unable to parse {}".format(node.type))
-  convert_func = _node_converter_registry.lookup(node.type)
-  nndct_nodes = convert_func(node)
+
   return nndct_nodes
 
-@RegisterNodeConverter(
-    ['Add', 'AddV2', 'BiasAdd', 'Identity', 'Mul', 'NoOp', 'Sigmoid', 'Tanh'])
-def convert_simple_op(node):
-  op_map = {
-      'Add': OpTypes.ADD,
-      'AddV2': OpTypes.ADD,
-      'BiasAdd': OpTypes.BIAS_ADD,
-      'Identity': OpTypes.IDENTITY,
-      'Mul': OpTypes.MULTIPLY,
-      'NoOp': OpTypes.NOOP,
-      'Sigmoid': OpTypes.SIGMOID,
-      'Tanh': OpTypes.TANH,
-  }
-  op_type = op_map.get(node.type, node.type)
+_tf_type_to_nndct = {
+    'Add': OpTypes.ADD,
+    'AddV2': OpTypes.ADD,
+    'BiasAdd': OpTypes.BIAS_ADD,
+    'Identity': OpTypes.IDENTITY,
+    'Mul': OpTypes.MULTIPLY,
+    'NoOp': OpTypes.NOOP,
+    'Reshape': OpTypes.RESHAPE,
+    'Sigmoid': OpTypes.SIGMOID,
+    'Tanh': OpTypes.TANH,
+    'GatherV2': OpTypes.GATHER,
+    'RFFT': 'rfft',
+    'ComplexAbs': 'complex_abs',
+    'Angle': 'angle',
+    'Exp': 'exp',
+    'IRFFT': 'irfft',
+    'Pad': 'pad',
+    'Transpose': 'transpose',
+    'Sum': 'sum',
+}
+
+#@RegisterNodeConverter(
+#    ['Add', 'AddV2', 'BiasAdd', 'Identity', 'Mul', 'NoOp', 'Sigmoid', 'Tanh'])
+@RegisterNodeConverter(list(_tf_type_to_nndct.keys()))
+def convert_simple_tf_op(node):
+  op_type = _tf_type_to_nndct[node.type]
   op = ops.Operation(op_type)
   return create_node(node.name, op, node.input_names, node.output_names)
 
-@RegisterNodeConverter('Cast')
-def parse_cast(op):
-  nndct_op = base_op.Cast()
-  nndct_op.attr['src'] = dtypes.from_tf(op.attrs['SrcT'])
-  nndct_op.attr['dst'] = dtypes.from_tf(op.attrs['DstT'])
-  return nndct_op
-
 @RegisterNodeConverter('Placeholder')
 def convert_op_placeholder(node):
-  op = (
-      OpBuilder(TFInput, node.get_attrs(), None).convert(
-          'shape', tf_utils.tf_shape_to_list).convert('dtype',
-                                                      dtypes.from_tf).build())
+  op = (OpBuilder(TFInput, node.get_config(), None).convert(
+      'shape', tf_utils.tf_shape_to_list).convert('dtype',
+                                                  dtypes.from_tf).build())
+  return create_node(node.name, op, node.input_names, node.output_names)
+
+@RegisterNodeConverter('Cast')
+def convert_op_cast(node):
+  config = node.get_config()
+  op = (OpBuilder(ops.Operation, None, None,
+                  OpTypes.CAST).config('dtype', config['DstT']).build())
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter('Const')
 def convert_op_const(node):
-  attrs = node.get_attrs()
-  ndarray = tf_utils.values_from_tf_const(node.raw_op.node_def)
+  attrs = node.get_config()
+  ndarray = tf_utils.values_from_tf_const(node.orig_op.node_def)
+  # Save ndarray or raw tf.Tensor?
+  attrs['value'] = ndarray
+  op = (OpBuilder(ops.Operation, attrs, None,
+                  OpTypes.CONST).param(node.name, ndarray).build())
+  return create_node(node.name, op, node.input_names, node.output_names)
 
-  op = (
-      OpBuilder(ops.Operation, attrs, None, OpTypes.CONST).convert(
-          'dtype', dtypes.from_tf).param(node.name, ndarray).build())
+@RegisterNodeConverter('StridedSlice')
+def convert_op_const(node):
+  attrs = node.get_config()
+  op = (OpBuilder(ops.Operation, attrs, None, OpTypes.STRIDED_SLICE).build())
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter('MatMul')
 def convert_op_matmul(node):
-  attrs = node.get_attrs()
+  attrs = node.get_config()
 
   op = (OpBuilder(TFDense, None, None).config('use_bias', False).build())
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter(layers.core.Dense)
 def convert_layer_dense(node):
-  attrs = node.get_attrs()
+  attrs = node.get_config()
   params = node.get_params()
 
-  op = (
-      OpBuilder(TFDense, attrs, params).ignore('activation').config(
-          'in_features', params['kernel'].shape[0]).build())
+  op = (OpBuilder(TFDense, attrs, params).ignore('activation').config(
+      'in_features', params['kernel'].shape[0]).build())
 
   dense_node = ops.Node(node.name, op)
   actv_node = create_activation_node(dense_node, attrs['activation'])
@@ -614,25 +642,23 @@ def convert_layer_dense(node):
 
 @RegisterNodeConverter(layers.Embedding)
 def convert_layer_embedding(node):
-  op = OpBuilder(TFEmbedding, node.get_attrs(), node.get_params()).build()
+  op = OpBuilder(TFEmbedding, node.get_config(), node.get_params()).build()
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter(layers.wrappers.Bidirectional)
 def convert_wrapper_bidirectional(node):
-  layer = node.raw_op
+  layer = node.orig_op
   backward_op = _parse_base_rnn(layer.backward_layer)
   forward_op = _parse_base_rnn(layer.forward_layer)
   backward_op.set_config('go_backwards', True)
 
-  op = (OpBuilder(TFBidirectional, node.get_attrs(), node.get_params())
-      .config('layer', forward_op)
-      .config('backward_layer', backward_op)
-      .build())
+  op = (OpBuilder(TFBidirectional, node.get_config(), node.get_params()).config(
+      'layer', forward_op).config('backward_layer', backward_op).build())
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter(layers.RNN)
 def convert_layer_rnn(node):
-  layer = node.raw_op
+  layer = node.orig_op
   op = _parse_base_rnn(layer)
   return create_node(node.name, op, node.input_names, node.output_names)
 
@@ -642,10 +668,9 @@ def _parse_base_rnn(layer):
   else:
     cell_op = _parse_rnn_layer(layer.cell)
 
-  op = (
-      OpBuilder(TFRNN, layer.get_config(),
-                keras_utils.keras_layer_params(layer)).config('cell',
-                                                              cell_op).build())
+  op = (OpBuilder(TFRNN, layer.get_config(),
+                  keras_utils.keras_layer_params(layer)).config(
+                      'cell', cell_op).build())
   return op
 
 def _parse_stacked_rnn_cells(layer):
@@ -653,15 +678,13 @@ def _parse_stacked_rnn_cells(layer):
   for cell in layer.cells:
     cell_ops.append(_parse_rnn_layer(cell))
 
-  op = (
-      OpBuilder(TFStackedRNNCells, layer.get_config(),
-                None).config('cells', cell_ops).build())
+  op = (OpBuilder(TFStackedRNNCells, layer.get_config(),
+                  None).config('cells', cell_ops).build())
   return op
 
 _rnn_layer_to_op = {
     layers.recurrent.LSTM: OpTypes.LSTM,
     layers.recurrent.LSTMCell: OpTypes.LSTM_CELL,
-
     layers.recurrent_v2.LSTM: OpTypes.LSTM,
     layers.recurrent_v2.LSTMCell: OpTypes.LSTM_CELL,
 }
@@ -669,9 +692,6 @@ _rnn_layer_to_op = {
 def _parse_rnn_layer(layer):
   config = layer.get_config()
   params = keras_utils.keras_layer_params(layer)
-  # op = (OpBuilder(TFRNNLayer, layer.get_config(), params)
-  #     .attr('layer_class', type(layer))
-  #     .build())
 
   # Naive method to determine if kernel weights are concated together.
   splited_params = {}
@@ -680,40 +700,42 @@ def _parse_rnn_layer(layer):
     suffix = ['_i', '_f', '_c', '_o']
     for name, value in params.items():
       for i in range(len(suffix)):
-        splited_params[name + suffix[i]] = np.copy(
-            value[..., i * units:(i + 1) * units])
+        splited_params[name + suffix[i]] = np.copy(value[..., i *
+                                                         units:(i + 1) * units])
   else:
     splited_params = params
 
-  op = (
-      OpBuilder(ops.Operation, config, splited_params,
-                _rnn_layer_to_op[type(layer)]).build())
+  op = (OpBuilder(ops.Operation, config, splited_params,
+                  _rnn_layer_to_op[type(layer)]).build())
   return op
 
-@RegisterNodeConverter([layers.LSTM, layers.recurrent_v2.LSTM])
+# TODO(yuwang): Parse v1 and v2 separatly and check 'recurrent_activation=sigmoid'.
+@RegisterNodeConverter([
+    layers.recurrent.LSTM, layers.recurrent_v2.LSTM, layers.recurrent.LSTMCell,
+    layers.recurrent_v2.LSTMCell
+])
 def convert_layer_lstm(node):
-  #op = OpBuilder(TFLSTM, node.get_attrs(), node.get_params()).build()
-  op = _parse_rnn_layer(node.raw_op)
+  op = _parse_rnn_layer(node.orig_op)
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter(layers.SimpleRNN)
 def convert_layer_simplernn(node):
-  op = OpBuilder(TFSimpleRNN, node.get_attrs(), node.get_params()).build()
+  op = OpBuilder(TFSimpleRNN, node.get_config(), node.get_params()).build()
   return create_node(node.name, op, node.input_names, node.output_names)
 
-@RegisterNodeConverter(layers.recurrent_v2.GRU)
+@RegisterNodeConverter([layers.recurrent.GRU, layers.recurrent_v2.GRU])
 def convert_layer_gru(node):
-  op = OpBuilder(TFGRU, node.get_attrs(), node.get_params()).build()
+  op = OpBuilder(TFGRU, node.get_config(), node.get_params()).build()
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter(layers.Conv1D)
 def convert_layer_conv1d(node):
-  op = OpBuilder(TFConv1D, node.get_attrs(), node.get_params()).build()
+  op = OpBuilder(TFConv1D, node.get_config(), node.get_params()).build()
   return create_node(node.name, op, node.input_names, node.output_names)
 
 @RegisterNodeConverter(layers.MaxPooling1D)
 def convert_layer_maxpool(node):
-  op = OpBuilder(TFMaxPool1D, node.get_attrs(), node.get_params()).build()
+  op = OpBuilder(TFMaxPool1D, node.get_config(), node.get_params()).build()
   return create_node(node.name, op, node.input_names, node.output_names)
 
 _activation_cvt_map = {

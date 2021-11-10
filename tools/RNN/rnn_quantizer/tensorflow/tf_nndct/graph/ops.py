@@ -49,14 +49,14 @@ class Graph(base_graph.Graph):
       self._add_tensor(tensor)
 
   def remove_node(self, node):
-    assert node.num_inputs <= 1, 'Not allowed: %s has mutiple inputs' % node.name
+    assert node.num_inputs <= 1, 'Not allowed: %s has multiple inputs' % node.name
     parents = self.parents(node)
     children = self.children(node)
 
     parent = parents[0] if len(parents) else None
     if parent:
-      assert parent.num_outputs == 1 and node.num_inputs == 1, ('Can not'
-          'remove node: %s' % node.name)
+      assert parent.num_outputs == 1 and node.num_inputs == 1, ('Can not '
+          'remove node "{}" as its parent "{}" has {} outputs'.format(node.name, parent.name, parent.num_outputs))
 
     for child in children:
       inputs_to_remove = []
@@ -113,7 +113,7 @@ class Node(base_node.Node):
     if index is None:
       self._in_tensors.append(tensor)
     elif index >= self.num_inputs:
-      raise ValueError('Index Error')
+      raise IndexError('index out of range')
     else:
       self._in_tensors[index] = tensor
 
@@ -155,7 +155,7 @@ class Node(base_node.Node):
 
   @property
   def in_nodes(self):
-    return [tensor.producer.name for tensor in self._in_tensors]
+    return list({tensor.producer.name for tensor in self._in_tensors})
 
   @property
   def num_outputs(self):

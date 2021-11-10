@@ -1,6 +1,3 @@
-
-
-#
 # Copyright 2019 Xilinx Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,7 +25,6 @@ import tempfile
 import tensorflow as tf
 
 from collections import OrderedDict
-from distutils.version import LooseVersion
 from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
@@ -71,7 +67,10 @@ def canonical_output_name(input_name):
   return ''.join([prefix, node_name, suffix])
 
 def dtype_to_tf_string(dtype):
-  tf_dtype = nndct_dtypes.to_tf(dtype)
+  if type(dtype) == nndct_dtypes.DType:
+    tf_dtype = nndct_dtypes.to_tf(dtype)
+  elif type(dtype) == tf_dtypes.DType:
+    tf_dtype = dtype
   return ".".join(["tf", tf_dtypes._TYPE_TO_STRING[tf_dtype]])
 
 def parse_tf_tensor(tensor):
@@ -93,7 +92,7 @@ def values_from_tf_const(node_def):
     ValueError: If the node isn't a Const.
   """
   if node_def.op != "Const":
-    raise ValueError("Node named '%s' should be a Const op." % node_def.name)
+    raise ValueError("Node '%s' should be a Const op." % node_def.name)
   input_tensor = node_def.attr["value"].tensor
   tensor_value = tensor_util.MakeNdarray(input_tensor)
   return tensor_value
@@ -178,7 +177,7 @@ def write_binary_proto(path, message):
   write_proto(path, message, as_text=False)
 
 def tf_version():
-  return LooseVersion(tf.__version__)
+  return tf.__version__
 
 def is_tf_concat(op):
   return op.type in ("Concat", "ConcatV2", "ConcatV3")

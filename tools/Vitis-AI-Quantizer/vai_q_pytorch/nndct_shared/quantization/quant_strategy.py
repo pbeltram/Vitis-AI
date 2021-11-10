@@ -61,6 +61,8 @@ class QuantStrategyBase(ABC):
     2 .mixed bits for lstm 
     
     """
+    # import ipdb
+    # ipdb.set_trace()
     config = {'param': {}, 'output': {}, 'input': {}}
     for node in quant_info_mgr.Nndctgraph.nodes:
       # print('---- Handling node %s type: %s' % (node.name, node.op.type))
@@ -70,7 +72,9 @@ class QuantStrategyBase(ABC):
           p = quant_info_mgr.quant_node_params(node)[k]
           # for mix precision quantization
           bw = self._bits_act
-          if k == node.op.ParamName.WEIGHTS:
+          if (node.has_bound_params() and 
+            (hasattr(node.op.ParamName, 'WEIGHTS') and k == node.op.ParamName.WEIGHTS or
+             hasattr(node.op.ParamName, 'GAMMA') and k == node.op.ParamName.GAMMA)):
             bw = self._bits_weight
           config['param'][p.name] = [bw, None]
           # print('---- Add fix of param %s' % p.name)
@@ -96,6 +100,25 @@ class QuantStrategyBase(ABC):
           if end not in config['output']:
             config['output'][end] = [self._bits_act, None]
             # print('---- Add fix of quant net input blob %s' % end)
+    
+    # check the input fix of all quantized ops 
+    # import ipdb
+    # ipdb.set_trace()
+    if not lstm:
+      for node in quant_info_mgr.Nndctgraph.nodes:
+        if quant_info_mgr.is_node_quantizable(node, lstm):
+          if node.op.type not in [NNDCT_OP.INPUT, NNDCT_OP.QUANT_STUB, NNDCT_OP.CONCAT]:
+            for p_n in quant_info_mgr.Nndctgraph.parents(node):
+              if not quant_info_mgr.op_unquantizable(p_n.op.type):
+                end = quant_info_mgr.quant_output(p_n.name).name
+                end_node = quant_info_mgr.Nndctgraph.node(end)
+                out_is_tensor = True
+                for tensor in end_node.out_tensors:
+                  if tensor.shape == None:
+                    out_is_tensor = False
+                if end not in config['output'] and out_is_tensor:
+                  config['output'][end] = [self._bits_act, None]
+        
     return config
 
   @property
@@ -130,20 +153,23 @@ class LstmQstrategy(QuantStrategyBase):
 
 
 class TQTStrategy(QuantStrategyBase):
-
+  
+  _max_bit = 8
+  _min_bit = 4
+  
   def __init__(self, bits_weight, bits_bias, bits_activation):
     super().__init__(bits_weight, bits_bias, bits_activation, True)
 
     # [input_bits, output_bits]
     self._init_bit_config = {
         NNDCT_OP.CONV2D: [self._bits_act, self._bits_act],
-        NNDCT_OP.ADD: [8, 8],
-        NNDCT_OP.MAX_POOL: [8, 8],
-        NNDCT_OP.AVG_POOL: [8, 8],
-        NNDCT_OP.ADAPTIVEAVGPOOL2D: [8, 8],
+        NNDCT_OP.ADD: [self._max_bit, self._max_bit],
+        NNDCT_OP.MAX_POOL: [self._max_bit, self._max_bit],
+        NNDCT_OP.AVG_POOL: [self._max_bit, self._max_bit],
+        NNDCT_OP.ADAPTIVEAVGPOOL2D: [self._max_bit, self._max_bit],
         NNDCT_OP.DENSE: [self._bits_act, self._bits_act],
-        NNDCT_OP.BATCH_NORM: [8, 4],
-        NNDCT_OP.QUANT_STUB: [None, 8]
+        NNDCT_OP.BATCH_NORM: [self._max_bit, self._min_bit],
+        NNDCT_OP.QUANT_STUB: [None, self._max_bit]
     }
 
     self._input_fix_op_types = [
@@ -154,7 +180,7 @@ class TQTStrategy(QuantStrategyBase):
     # self._passive_quant_ops = [NNDCT_OP.CONCAT]
 
   def _get_init_config_from_type(self, op_type):
-    default = [8, 8]
+    default = [self._max_bit, self._max_bit]
     return copy.copy(self._init_bit_config.get(op_type, default))
 
   def create_quant_config(self, quant_info_mgr):
@@ -185,13 +211,13 @@ class TQTStrategy(QuantStrategyBase):
         # *_, end = quant_info_mgr.quant_groups[node.name]
         node_bits_map[node.name] = self._get_init_config_from_type(node.op.type)
         if node in (tensor.node for tensor in quant_info_mgr.Nndctgraph.end_tensors):
-          node_bits_map[node.name][1] = 8
+          node_bits_map[node.name][1] = self._max_bit
         elif node.op.type in self._input_fix_op_types:
           output_bit_list = []
           for c_node in quant_info_mgr.Nndctgraph.children(node):
             self._find_next_quant_nodes_bits(quant_info_mgr, c_node,
                                              output_bit_list)
-          node_bits_map[node.name][1] = max(output_bit_list)
+          node_bits_map[node.name][1] = max(output_bit_list) if output_bit_list else self._max_bit
           # if node.op.type in self._passive_quant_ops:
           #   node_bits_map[node.name][0] = node_bits_map[node.name][1]
 
@@ -206,8 +232,10 @@ class TQTStrategy(QuantStrategyBase):
           if pn.name in node_bits_map:
             node_bits_map[node.name] = node_bits_map[pn.name]
             break
-        if node.name not in node_bits_map and len(node.in_nodes) != 0:
-          raise RuntimeError(f"Miss {node.name} num_bits")
+          
+        if node.name not in node_bits_map:
+          node_bits_map[node.name] = self._get_init_config_from_type(node.op.type)
+       
 
     # handle input bits
     for node in quant_info_mgr.Nndctgraph.nodes:

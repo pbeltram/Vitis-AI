@@ -258,13 +258,14 @@ def _parse_input_fn(input_fn_str):
   return input_fn
 
 
-def _parse_session_config(gpu, gpu_memory_fraction):
+def _parse_session_config(gpu_memory_fraction):
   """Parse session configurations"""
   s_config = config_pb2.ConfigProto()
   s_config.gpu_options.per_process_gpu_memory_fraction = gpu_memory_fraction
   # Disable graph optimizer and rewiter to make sure every quantize node works correctly
-  s_config.graph_options.optimizer_options.opt_level = -1
-  s_config.graph_options.rewrite_options.disable_meta_optimizer = True
+  # the next two operation have been moved into `quantize_frozen` and `dump` function
+  # s_config.graph_options.optimizer_options.opt_level = -1
+  # s_config.graph_options.rewrite_options.disable_meta_optimizer = True
   return s_config
 
 
@@ -366,20 +367,21 @@ def quantize_frozen(input_graph_def,
     deploy_graph_def: A `GraphDef` object, the quantized model for dpu deployment.
   """
 
+  s_config.graph_options.optimizer_options.opt_level = -1
+  s_config.graph_options.rewrite_options.disable_meta_optimizer = True
   if not skip_check:
     check_float_graph(input_graph_def, input_fn, q_config, s_config)
 
   quantize_eval_graph_def = calibrate_frozen(input_graph_def, input_fn,
                                              q_config, s_config)
-  deploy_graph_def = deploy_frozen(quantize_eval_graph_def, q_config)
+  # deploy_graph_def = deploy_frozen(quantize_eval_graph_def, q_config)
+  print("INFO: skip create deploy_model.pb")
 
   # Summarize Quantize Results
   print("********************* Quantization Summary *********************\
       \nINFO: Output: \
-      \n  quantize_eval_model: {} \
-      \n  deploy_model: {}".format(
-      os.path.join(q_config.output_dir, "quantize_eval_model.pb"),
-      os.path.join(q_config.output_dir, "deploy_model.pb")))
+      \n  quantize_eval_model: {} ".format(
+      os.path.join(q_config.output_dir, "quantize_eval_model.pb")))
 
   #  if dump_as_xir:
   #    in_shapes = None
@@ -512,9 +514,11 @@ def dump(input_graph_def,
          output_dir,
          max_dump_batches,
          dump_float,
-         s_config,
+         s_config=config_pb2.ConfigProto(),
          dump_input_tensors=''):
   """Dump weights and activation data"""
+  s_config.graph_options.optimizer_options.opt_level = -1
+  s_config.graph_options.rewrite_options.disable_meta_optimizer = True
   w_q_map = dict()
   a_q_map = dict()
   for node in input_graph_def.node:
@@ -546,19 +550,19 @@ def dump(input_graph_def,
     a_fetch_tensors = []
     a_fetch_names = []
     for op in graph.get_operations():
-      if dump_float:
-        try:
-          a_fetch_tensors.append(op.outputs[0])
-          a_fetch_names.append(op.name)
-        except KeyError:
-          continue
-      elif op.type == "FixNeuron":
+      if op.type == "FixNeuron":
         if op.name.endswith("wquant"):
           w_fetch_tensors.append(op.outputs[0])
           w_fetch_names.append(op.name)
         else:
           a_fetch_tensors.append(op.outputs[0])
           a_fetch_names.append(op.name)
+      elif dump_float:
+        try:
+          a_fetch_tensors.append(op.outputs[0])
+          a_fetch_names.append(op.name)
+        except KeyError:
+          continue
 
     # Dump weights/biases
     print("INFO: Start Dumping for {} batches".format(max_dump_batches))
@@ -661,9 +665,12 @@ def main(unused_args, flags):
                                 align_concat=flags.align_concat,
                                 adjust_shift_bias=flags.adjust_shift_bias,
                                 adjust_shift_cut=flags.adjust_shift_cut,
-                                simulate_dpu=flags.simulate_dpu)
+                                simulate_dpu=flags.simulate_dpu,
+                                scale_all_avgpool=flags.scale_all_avgpool,
+                                do_cle=flags.do_cle,
+                                replace_relu6=flags.replace_relu6)
       input_fn = _parse_input_fn(flags.input_fn)
-      s_config = _parse_session_config(flags.gpu, flags.gpu_memory_fraction)
+      s_config = _parse_session_config(flags.gpu_memory_fraction)
 
       quantize_frozen(input_graph_def, input_fn, q_config, s_config,
                       flags.skip_check, flags.dump_as_xir)
@@ -691,7 +698,8 @@ def main(unused_args, flags):
                                 align_concat=flags.align_concat,
                                 adjust_shift_bias=flags.adjust_shift_bias,
                                 adjust_shift_cut=flags.adjust_shift_cut,
-                                simulate_dpu=flags.simulate_dpu)
+                                simulate_dpu=flags.simulate_dpu,
+                                scale_all_avgpool=flags.scale_all_avgpool)
 
       quantize_train(input_meta_graph_def, q_config)
 
@@ -718,7 +726,8 @@ def main(unused_args, flags):
                                 align_concat=flags.align_concat,
                                 adjust_shift_bias=flags.adjust_shift_bias,
                                 adjust_shift_cut=flags.adjust_shift_cut,
-                                simulate_dpu=flags.simulate_dpu)
+                                simulate_dpu=flags.simulate_dpu,
+                                scale_all_avgpool=flags.scale_all_avgpool)
       quantize_evaluate(input_meta_graph_def, q_config)
 
     else:
@@ -755,7 +764,7 @@ def main(unused_args, flags):
     os.environ["ARCH_TYPE"] = flags.arch_type
     input_graph_def = _parse_input_frozen_graph(flags.input_frozen_graph)
     input_fn = _parse_input_fn(flags.input_fn)
-    s_config = _parse_session_config(flags.gpu, flags.gpu_memory_fraction)
+    s_config = _parse_session_config(flags.gpu_memory_fraction)
     dump(input_graph_def, input_fn, flags.output_dir, flags.max_dump_batches,
          flags.dump_float, s_config, flags.dump_input_tensors)
 
@@ -765,7 +774,7 @@ def main(unused_args, flags):
 
 
 def version_string():
-  version_number = "v1.2.0"
+  version_number = "v1.4.1"
   version = "Vai_q_tensorflow " + version_number
   version += " build for Tensorflow " + pywrap_tensorflow.__version__
   version += "\ngit version " + pywrap_tensorflow.__git_version__
@@ -948,6 +957,33 @@ def run_main():
       "Set to 1 to enable simulation of DPU. The behavior of DPU for some operations are different from tensorflow. \
       For example, the dividing in LeakyRelu and AvgPooling are replaced by bit-shifting, so there maybe slight difference \
       between DPU outputs and CPU/GPU outputs. This quantizer will simulate the behavior for these operations if this flag is set to 1"
+  )
+  parser.add_argument(
+      "--scale_all_avgpool",
+      type=int,
+      default=1,
+      choices=[0, 1],
+      help=
+      "Set to 1 to enable scale output of AvgPooling op to simulate DPU. Only kernel_size <= 256 will be scaled. \
+      This operation do not affect the special case such as kernel_size=3,5,6,7,14"
+  )
+  parser.add_argument(
+      "--do_cle",
+      type=int,
+      default=0,
+      choices=[0, 1],
+      help=
+      "Set to 1 to enable implement cross layer equalization to adjust the weights distribution . \
+      Set to 0 will skip cross layer equalization operation "
+  )
+  parser.add_argument(
+      "--replace_relu6",
+      type=int,
+      default=1,
+      choices=[0, 1],
+      help=
+      "Set to 1 to enable replace relu6 with relu. \
+      Set to 0 will skip replacement."
   )
 
   ############################################

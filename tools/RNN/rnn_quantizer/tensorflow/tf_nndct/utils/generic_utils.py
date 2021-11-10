@@ -43,14 +43,14 @@ def to_list(x):
   return [x]
 
 def get_temp_directory():
-  return os.environ.get("NNDCT_TEMP_DIRECTORY", tempfile.mkdtemp())
+  return os.environ.get("VAI_TEMP_DIRECTORY", tempfile.mkdtemp())
 
 def delete_directory(path):
   if os.path.exists(path):
     shutil.rmtree(path)
 
 def mkdir_if_not_exist(x):
-  if os.path.isdir(x):
+  if not x or os.path.isdir(x):
     return
   os.mkdir(x)
   if not os.path.isdir(x):

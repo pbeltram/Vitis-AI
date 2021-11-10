@@ -18,14 +18,14 @@
 
 import copy
 import os
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union, List
 
 import torch
 
 import nndct_shared.utils as nndct_utils
-from nndct_shared.base import GLOBAL_MAP, NNDCT_KEYS
+from nndct_shared.base import GLOBAL_MAP, NNDCT_KEYS, NNDCT_OP
 from nndct_shared.compile import CompilerFactory, DeployChecker
-from nndct_shared.utils import AddXopError, NndctOption, NndctScreenLogger
+from nndct_shared.utils import AddXopError, NndctOption, NndctScreenLogger, option_util
 from nndct_shared.quantization import DefaultQstrategy
 from pytorch_nndct.quantization import TORCHQuantizer
 from .adaquant import AdvancedQuantProcessor
@@ -84,7 +84,8 @@ class TorchQuantProcessor():
                bitwidth_a: int = 8,
                mix_bit: bool = False,
                device: torch.device = torch.device("cuda"),
-               lstm_app: bool = False):
+               lstm_app: bool = False,
+               custom_quant_ops: Optional[List[str]] = None):
     # Check arguments type
     self._check_args(module, input_args)
     
@@ -108,6 +109,8 @@ class TorchQuantProcessor():
     GLOBAL_MAP.set_map(NNDCT_KEYS.QUANTIZER, quantizer)
     GLOBAL_MAP.set_map(NNDCT_KEYS.QUANT_MODE, qmode)
     GLOBAL_MAP.set_map(NNDCT_KEYS.QUANT_DEVICE, device)
+    if lstm_app: option_util.set_option_value("nndct_cv_app", False)
+    else: option_util.set_option_value("nndct_cv_app", True)
     
     # Prepare quantizable module
     quant_module, graph = prepare_quantizable_module(
@@ -124,7 +127,7 @@ class TorchQuantProcessor():
       set_outputs_recorder_status(quant_module, True)
         
     # intialize quantizer 
-    quantizer.setup(graph, False, lstm_app)
+    quantizer.setup(graph, False, lstm_app, custom_quant_ops=custom_quant_ops)
 
     # hook module with quantizer
     # connect_module_with_quantizer(quant_module, quantizer)
@@ -184,6 +187,18 @@ def dump_xmodel(output_dir="quantize_result", deploy_check=False, lstm_app=False
     NndctScreenLogger().info("=>Converting to xmodel ...")
     deploy_graphs = get_deploy_graph_list(quantizer.quant_model, quantizer.Nndctgraph)
     depoly_infos = compiler.get_deloy_graph_infos(quantizer, deploy_graphs)
+    if not lstm_app:
+      for node in depoly_infos[0].dev_graph.nodes:
+        error_out = False
+        if node.op.type not in [NNDCT_OP.INPUT, NNDCT_OP.QUANT_STUB]:
+          continue
+        for i, tensor in enumerate(node.out_tensors):
+          if tensor.shape[0] != 1:
+            NndctScreenLogger().error(f"Batch size must be 1 when exporting xmodel.")
+            error_out = True
+            break
+        if error_out:
+          break
       
     for depoly_info in depoly_infos:
       try:
@@ -193,7 +208,8 @@ def dump_xmodel(output_dir="quantize_result", deploy_check=False, lstm_app=False
             output_file_name=os.path.join(output_dir, depoly_info.dev_graph.name))
 
       except AddXopError as e:
-        NndctScreenLogger().error(f"Failed convert graph '{depoly_info.dev_graph.name}' to xmodel({str(e)}).")
+        NndctScreenLogger().error(f"Failed convert graph '{depoly_info.dev_graph.name}' to xmodel.")
+        raise e
        
       # dump data for accuracy check
       if deploy_check:

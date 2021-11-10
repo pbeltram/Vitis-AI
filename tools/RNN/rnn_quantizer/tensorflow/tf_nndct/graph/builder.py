@@ -1,6 +1,3 @@
-
-
-#
 # Copyright 2019 Xilinx Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +41,6 @@ class KerasBuilder(object):
   def __init__(self, graph):
     self._graph = graph
 
-  # TODO(yuwang): Make filepath optional.
   def build(self, filepath, quantized=False, as_layer=False):
     class_name = self._graph.name
     base_class = keras.Model
@@ -56,7 +52,7 @@ class KerasBuilder(object):
       else:
         base_class = keras.layers.Layer
     class_spec = ClassSpec(class_name, base_class, call_fn_name, quantized)
-    writer = writer_lib.ModuleClassWriter(self._graph, class_spec)
+    writer = writer_lib.GraphCodeGenerator(self._graph, class_spec)
     layer_to_node = writer.write(filepath)
 
     # TODO(yuwang): Use code below.

@@ -9,7 +9,7 @@ RNN quantizer is designed to quantize recurrent neural network(RNN) models. Curr
 1. Support version 3.6 ~ 3.7. 
     
 * Pytorch
-1. Support version 1.1 ~ 1.4. 
+1. Support version 1.1 ~ 1.7.1. 
 2. Data Parallelism is NOT supported.
 
 * TensorFlow
@@ -20,8 +20,8 @@ RNN quantizer is designed to quantize recurrent neural network(RNN) models. Curr
     
 ### Quick Start in Docker environment
 
-RNN tools are only avilable in GPU docker. If you work in Vitis-AI 1.3 GPU docker, there is a conda environment "vitis-ai-lstm", in which RNN quantizer is already installed. 
-In this conda environment, python version is 3.6, pytorch version is 1.4 and tensorflow version is 2.0. You can directly start lstm example without installation steps.
+If you work in Vitis-AI 1.4 docker, there is a conda environment "vitis-ai-lstm", in which RNN quantizer is already installed. 
+In this conda environment, python version is 3.6, pytorch version is 1.4.0 and tensorflow version is 2.0. You can directly start lstm example without installation steps.
 - Copy example/lstm_quant_pytorch to docker environment
 - Quantize, using a subset(1000 sequences) of validation data for calibration. Because we are in quantize calibration process, the displayed loss and accuracy are meaningless.
   ```shell
@@ -44,10 +44,10 @@ For GPU version, if CUDA library is installed in /usr/local/cuda, add the follow
 
     export CUDA_HOME=/usr/local/cuda 
 
-##### Pre step 2 : install Pytorch(1.1-1.4) and torchvision
-Here take pytorch 1.4 and torchvision 0.5.0 as an example, detailed instructions for other versions are in [pytorch](https://pytorch.org/) website.
+##### Pre step 2 : install Pytorch(1.1-1.7.1) and torchvision
+Here take pytorch 1.7.1 and torchvision 0.8.2 as an example, detailed instructions for other versions are in [pytorch](https://pytorch.org/) website.
 
-    pip install torch==1.4.0 torchvision==0.5.0 
+    pip install torch==1.7.1 torchvision==0.8.2 
 
 ##### Pre step 3 : install other dependencies
     pip install -r requirements.txt 
@@ -88,7 +88,7 @@ To create deployed model, XIR library needs to be installed. If just run quantiz
 Refer to Vitis AI document for more information on deployment.
 
 **Note:**<br>
-If pytorch version you installed < 1.4, import pytorch_nndct before torch in your script. This is cuased by a pytorch bug before version 1.4.
+If pytorch version you installed < 1.4, import pytorch_nndct before torch in your script. This is caused by a pytorch bug before version 1.4.
 Refer to Pytorch github issue [28536](https://github.com/pytorch/pytorch/pull/28536) and [19668](https://github.com/pytorch/pytorch/issues/19668) for details. 
 ```python
 import pytorch_nndct

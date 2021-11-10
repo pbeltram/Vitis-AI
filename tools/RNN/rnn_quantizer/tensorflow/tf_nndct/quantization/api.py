@@ -70,8 +70,9 @@ def tf_quantizer(model,
   # turn off weights equalization and bias correction
   option_util.set_option_value("nndct_param_corr", False)
   option_util.set_option_value("nndct_equalization", False)
-  
-  quantizer = TFQuantizer(qmode, output_dir, bitwidth, bitwidth)
+
+  # lstm IP only support 16 bit activation
+  quantizer = TFQuantizer(qmode, output_dir, bitwidth, 16)
   GLOBAL_MAP.set_map(NNDCT_KEYS.QUANTIZER, quantizer)
   GLOBAL_MAP.set_map(NNDCT_KEYS.QUANT_MODE, qmode)
 
